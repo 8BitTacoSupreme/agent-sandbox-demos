@@ -1,0 +1,471 @@
+#!/usr/bin/env bash
+# =============================================================================
+# sbx — kernel-level sandbox for AI coding agents
+# =============================================================================
+# Tool-agnostic. Works downstream of Flox, devbox, mise, asdf, direnv, or
+# plain Homebrew/apt. Inspired by sandflox; designed for portability.
+#
+# Two enforcement tiers:
+#   Shell tier — PATH wipe + symlink farm + function armor
+#   Kernel tier — sandbox-exec on macOS, bwrap+Landlock on Linux
+#
+# Usage:
+#   sbx prepare          # generate .sandbox/{bin,profile.sb,armor.bash}
+#   sbx elevate          # re-exec current shell under kernel sandbox
+#   sbx -- <cmd>         # run cmd inside fresh sandboxed shell
+#   sbx validate         # dry-run; print what would be enforced
+#   sbx status           # report active enforcement state
+# =============================================================================
+
+set -euo pipefail
+
+SBX_DIR=".sandbox"
+REQUISITES="${SBX_REQUISITES:-requisites.txt}"
+POLICY="${SBX_POLICY:-policy.toml}"
+
+# Standard paths every macOS binary needs to read.
+SYS_READ_PATHS=(
+  /usr/lib /usr/share /usr/libexec
+  /System/Library
+  /private/etc /private/var/db /private/var/folders
+  /dev/null /dev/urandom /dev/zero /dev/random /dev/tty /dev/dtracehelper
+  /Library/Preferences
+)
+
+# Standard paths denied by default (credentials).
+DENIED_PATHS=(
+  "$HOME/.ssh"
+  "$HOME/.gnupg"
+  "$HOME/.aws"
+  "$HOME/.config/gcloud"
+  "$HOME/.config/gh"
+  "$HOME/.netrc"
+  "$HOME/.kube"
+)
+
+# Package managers blocked by function armor (shell tier).
+BLOCKED_MANAGERS=(
+  flox nix nix-env nix-store nix-shell nix-build
+  apt apt-get yum dnf brew snap flatpak
+  pip pip3 npm npx yarn pnpm cargo go gem composer uv
+  docker podman
+)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# usage / help
+# ─────────────────────────────────────────────────────────────────────────────
+
+usage() {
+  cat <<'EOF'
+sbx — kernel-level sandbox for AI coding agents
+
+USAGE
+    sbx <command> [args]
+    sbx -- <cmd> [args]    # shorthand for elevate + run
+
+COMMANDS
+    prepare              Generate .sandbox/ artifacts (bin/, profile.sb, armor.bash)
+    elevate              Re-exec current shell under sandbox-exec
+    validate             Dry-run — show what would be enforced
+    status               Report active sandbox state
+    help                 Show this message
+
+CONFIG
+    requisites.txt       List of binaries to allowlist (one per line)
+    policy.toml          Workspace + denied paths + network mode
+
+EXIT CODES
+    0   success
+    1   misuse / config error
+    126 blocked by sandbox (shell tier)
+EOF
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+die() { echo "[sbx] error: $*" >&2; exit 1; }
+say() { echo "[sbx] $*" >&2; }
+
+# Read a key from policy.toml. Tiny TOML reader — handles flat string keys.
+toml_get() {
+  local key="$1" default="${2:-}"
+  [[ -f "$POLICY" ]] || { echo "$default"; return; }
+  grep -E "^[[:space:]]*${key}[[:space:]]*=" "$POLICY" 2>/dev/null \
+    | head -1 \
+    | sed -E "s/^[^=]*=[[:space:]]*\"?([^\"]*)\"?[[:space:]]*$/\1/" \
+    || echo "$default"
+}
+
+# Find absolute path of a binary on the current PATH.
+resolve_binary() {
+  local name="$1"
+  local path
+  path="$(command -v "$name" 2>/dev/null || true)"
+  [[ -z "$path" ]] && return 1
+  # Resolve symlinks to actual binary
+  if command -v readlink >/dev/null 2>&1; then
+    if readlink -f "$path" >/dev/null 2>&1; then
+      readlink -f "$path"
+    else
+      # macOS readlink doesn't have -f without coreutils
+      python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$path" 2>/dev/null || echo "$path"
+    fi
+  else
+    echo "$path"
+  fi
+}
+
+# Get unique parent directories from a list of file paths.
+unique_parents() {
+  local paths=("$@")
+  printf '%s\n' "${paths[@]}" | xargs -n1 dirname 2>/dev/null | sort -u
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# prepare — generate .sandbox/ artifacts
+# ─────────────────────────────────────────────────────────────────────────────
+
+cmd_prepare() {
+  [[ -f "$REQUISITES" ]] || die "$REQUISITES not found. Run 'sbx init' or create one."
+
+  say "Preparing sandbox in $SBX_DIR/"
+  mkdir -p "$SBX_DIR/bin"
+
+  # Pass 1: resolve every requisite to an absolute path.
+  # Shell builtins (cd, test, etc.) are part of bash, not separate binaries —
+  # skip them silently.
+  local builtins=" cd test [ pwd echo : true false alias unalias type "
+  local resolved=() missing=()
+  while IFS= read -r line; do
+    line="${line%%#*}"  # strip comments
+    line="${line//[[:space:]]/}"
+    [[ -z "$line" ]] && continue
+    [[ "$builtins" == *" $line "* ]] && continue  # skip builtins
+    local abs
+    if abs=$(resolve_binary "$line"); then
+      resolved+=("$line:$abs")
+    else
+      missing+=("$line")
+    fi
+  done < "$REQUISITES"
+
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    say "WARNING: not on PATH (skipped): ${missing[*]}"
+  fi
+
+  # Pass 2: build symlink farm.
+  rm -f "$SBX_DIR"/bin/*
+  local bin_paths=()
+  for entry in "${resolved[@]}"; do
+    local name="${entry%%:*}" abs="${entry##*:}"
+    ln -sf "$abs" "$SBX_DIR/bin/$name"
+    bin_paths+=("$abs")
+  done
+  say "Symlinked ${#resolved[@]} binaries into $SBX_DIR/bin/"
+
+  # Pass 3: discover unique read paths from binary parents (typically
+  # a few /nix/store entries, or /opt/homebrew/bin, or /usr/bin).
+  local read_paths
+  read_paths=$(unique_parents "${bin_paths[@]}")
+
+  # Pass 4: generate SBPL profile.
+  generate_sbpl "$read_paths" > "$SBX_DIR/profile.sb"
+  say "Wrote $SBX_DIR/profile.sb"
+
+  # Pass 5: generate function armor.
+  generate_armor > "$SBX_DIR/armor.bash"
+  say "Wrote $SBX_DIR/armor.bash"
+
+  # Pass 6: a manifest for status/validate.
+  {
+    echo "# sbx manifest — generated $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "tools=${#resolved[@]}"
+    echo "missing=${#missing[@]}"
+    echo "policy=$POLICY"
+    echo "network=$(toml_get network blocked)"
+    echo "filesystem=$(toml_get filesystem workspace)"
+  } > "$SBX_DIR/manifest"
+
+  say "Done. Run 'sbx elevate' to add kernel enforcement."
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# generate_sbpl — emit Seatbelt profile
+# ─────────────────────────────────────────────────────────────────────────────
+
+generate_sbpl() {
+  local read_paths="$1"
+  local workspace
+  workspace="$(pwd)"
+  local network_mode
+  network_mode="$(toml_get network blocked)"
+  local fs_mode
+  fs_mode="$(toml_get filesystem workspace)"
+
+  cat <<SBPL
+;; Generated by sbx — do not edit by hand
+(version 1)
+(deny default)
+
+;; Process control — required for any binary to run
+(allow process-fork)
+(allow process-exec)
+(allow signal (target self))
+(allow sysctl-read)
+(allow mach-lookup)
+(allow ipc-posix-shm)
+
+;; ── Filesystem reads: system + binary directories ──
+(allow file-read*
+SBPL
+
+  # System paths
+  for p in "${SYS_READ_PATHS[@]}"; do
+    echo "  (subpath \"$p\")"
+  done
+
+  # Binary parent paths (resolved from requisites)
+  while IFS= read -r p; do
+    [[ -n "$p" ]] && echo "  (subpath \"$p\")"
+  done <<< "$read_paths"
+
+  # Workspace read
+  echo "  (subpath \"$workspace\")"
+
+  # User HOME read for benign config (terminfo, locale)
+  echo "  (literal \"$HOME/.bashrc\")"
+  echo "  (literal \"$HOME/.zshrc\")"
+  echo "  (literal \"$HOME/.profile\")"
+  echo "  (subpath \"$HOME/.terminfo\")"
+
+  cat <<SBPL
+)
+
+;; ── Filesystem writes ──
+SBPL
+
+  case "$fs_mode" in
+    permissive)
+      echo "(allow file-write*)"
+      ;;
+    strict)
+      echo "(allow file-write* (subpath \"/private/tmp\"))"
+      echo "(allow file-write* (subpath \"/private/var/folders\"))"
+      ;;
+    workspace|*)
+      echo "(allow file-write* (subpath \"$workspace\"))"
+      echo "(allow file-write* (subpath \"/private/tmp\"))"
+      echo "(allow file-write* (subpath \"/private/var/folders\"))"
+      ;;
+  esac
+
+  cat <<SBPL
+
+;; ── Denied credential paths ──
+(deny file-read*
+SBPL
+
+  for p in "${DENIED_PATHS[@]}"; do
+    echo "  (subpath \"$p\")"
+  done
+
+  cat <<SBPL
+)
+
+;; ── Network ──
+SBPL
+
+  case "$network_mode" in
+    unrestricted)
+      echo "(allow network*)"
+      ;;
+    blocked|*)
+      echo "(deny network*)"
+      echo "(allow network* (local ip))"
+      echo "(allow network-bind (local ip))"
+      ;;
+  esac
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# generate_armor — shell function armor for package managers
+# ─────────────────────────────────────────────────────────────────────────────
+
+generate_armor() {
+  cat <<'HEADER'
+# Generated by sbx — source from your shell init when entering the sandbox.
+# Provides parseable [sbx] BLOCKED messages so agents know what failed.
+
+HEADER
+
+  for mgr in "${BLOCKED_MANAGERS[@]}"; do
+    cat <<ARMOR
+function $mgr {
+  echo "[sbx] BLOCKED: $mgr is not available. Environment is immutable." >&2
+  return 126
+}
+ARMOR
+  done
+
+  cat <<'FOOTER'
+
+# Block python escape vectors
+function python3 {
+  for arg in "$@"; do
+    case "$arg" in
+      -m) shift
+          case "${1:-}" in
+            pip|ensurepip|venv)
+              echo "[sbx] BLOCKED: python3 -m $1 is not available." >&2
+              return 126 ;;
+          esac
+          set -- -m "$@" ;;
+    esac
+  done
+  command python3 "$@"
+}
+
+# Sentinel for status command
+export SBX_ACTIVE=1
+FOOTER
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# elevate — re-exec current shell under sandbox-exec
+# ─────────────────────────────────────────────────────────────────────────────
+
+cmd_elevate() {
+  [[ -f "$SBX_DIR/profile.sb" ]] || die "Run 'sbx prepare' first."
+
+  if [[ "${SBX_ACTIVE:-0}" == "1" ]]; then
+    say "Already sandboxed — nothing to do."
+    return 0
+  fi
+
+  if [[ "$(uname)" != "Darwin" ]]; then
+    die "elevate is macOS-only (uses sandbox-exec). On Linux, use the bwrap variant."
+  fi
+
+  say "Elevating: re-exec $SHELL under sandbox-exec"
+
+  local shell_name
+  shell_name="$(basename "$SHELL")"
+
+  case "$shell_name" in
+    zsh)
+      # zsh doesn't support --rcfile. Use ZDOTDIR to point at a directory
+      # containing a .zshrc that sources our armor.
+      local zdot="$SBX_DIR/zdot"
+      mkdir -p "$zdot"
+      echo "source \"$(pwd)/$SBX_DIR/armor.bash\"" > "$zdot/.zshrc"
+      exec env \
+        SBX_ACTIVE=1 \
+        PATH="$(pwd)/$SBX_DIR/bin" \
+        SHELL="$SHELL" \
+        ZDOTDIR="$(pwd)/$zdot" \
+        sandbox-exec -f "$SBX_DIR/profile.sb" "$SHELL"
+      ;;
+    *)
+      exec env \
+        SBX_ACTIVE=1 \
+        PATH="$(pwd)/$SBX_DIR/bin" \
+        SHELL="$SHELL" \
+        sandbox-exec -f "$SBX_DIR/profile.sb" "$SHELL" --rcfile "$SBX_DIR/armor.bash"
+      ;;
+  esac
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# validate — dry-run inspector
+# ─────────────────────────────────────────────────────────────────────────────
+
+cmd_validate() {
+  [[ -f "$REQUISITES" ]] || die "$REQUISITES not found"
+  [[ -f "$SBX_DIR/manifest" ]] || die "Run 'sbx prepare' first."
+
+  cat "$SBX_DIR/manifest"
+  say "Profile: $SBX_DIR/profile.sb ($(wc -l < "$SBX_DIR/profile.sb") lines)"
+  say "Allowlisted binaries: $(ls "$SBX_DIR/bin" 2>/dev/null | wc -l)"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# status — runtime introspection
+# ─────────────────────────────────────────────────────────────────────────────
+
+cmd_status() {
+  if [[ "${SBX_ACTIVE:-0}" == "1" ]]; then
+    say "Active: kernel + shell enforcement"
+  else
+    say "Inactive: outside sandbox"
+  fi
+  [[ -f "$SBX_DIR/manifest" ]] && cat "$SBX_DIR/manifest"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# init — emit example config
+# ─────────────────────────────────────────────────────────────────────────────
+
+cmd_init() {
+  [[ -f "$REQUISITES" ]] && say "$REQUISITES exists, skipping" || \
+    cat > "$REQUISITES" <<'EOF'
+# Allowlisted binaries — one per line. Comments start with #.
+bash
+sh
+cat
+ls
+echo
+grep
+sed
+awk
+head
+tail
+sort
+uniq
+wc
+diff
+find
+git
+jq
+curl
+python3
+EOF
+
+  [[ -f "$POLICY" ]] && say "$POLICY exists, skipping" || \
+    cat > "$POLICY" <<'EOF'
+[meta]
+version = "1"
+
+[network]
+mode = "blocked"
+allow-localhost = true
+
+[filesystem]
+mode = "workspace"
+EOF
+
+  say "Wrote $REQUISITES and $POLICY"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# main dispatch
+# ─────────────────────────────────────────────────────────────────────────────
+
+CMD="${1:-help}"
+[[ $# -gt 0 ]] && shift
+
+case "$CMD" in
+  prepare)  cmd_prepare "$@" ;;
+  elevate)  cmd_elevate "$@" ;;
+  validate) cmd_validate "$@" ;;
+  status)   cmd_status "$@" ;;
+  init)     cmd_init "$@" ;;
+  --)
+    cmd_prepare
+    exec env SBX_ACTIVE=1 PATH="$(pwd)/$SBX_DIR/bin" \
+      sandbox-exec -f "$SBX_DIR/profile.sb" "$@"
+    ;;
+  help|-h|--help) usage ;;
+  *) usage; exit 1 ;;
+esac

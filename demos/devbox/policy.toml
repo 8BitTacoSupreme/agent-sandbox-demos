@@ -1,0 +1,15 @@
+[meta]
+version = "1"
+profile = "default"
+
+[network]
+mode = "blocked"
+allow-localhost = true
+
+[filesystem]
+mode = "workspace"
+writable = [".", "/tmp"]
+denied = ["~/.ssh", "~/.aws", "~/.gnupg", "~/.kube", "~/.config/gh"]
+
+[security]
+env-passthrough = []

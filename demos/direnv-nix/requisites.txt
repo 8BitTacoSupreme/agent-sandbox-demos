@@ -1,0 +1,48 @@
+# Core shell utilities
+bash
+sh
+cat
+ls
+echo
+pwd
+cd
+mkdir
+rmdir
+rm
+cp
+mv
+ln
+chmod
+test
+
+# Text processing
+grep
+sed
+awk
+head
+tail
+sort
+uniq
+wc
+cut
+tr
+tee
+
+# File inspection
+find
+file
+stat
+diff
+
+# Networking (will hit kernel deny if network=blocked)
+curl
+ping
+
+# Dev essentials
+git
+jq
+python3
+node
+
+# Build tools (allowed; package install commands are blocked separately)
+make

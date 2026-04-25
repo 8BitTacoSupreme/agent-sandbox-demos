@@ -1,0 +1,28 @@
+{
+  "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.13.7/.schema/devbox.schema.json",
+  "packages": [
+    "bash@latest",
+    "coreutils@latest",
+    "findutils@latest",
+    "gnugrep@latest",
+    "gnused@latest",
+    "gawk@latest",
+    "diffutils@latest",
+    "git@latest",
+    "jq@latest",
+    "curl@latest",
+    "python3@3.12",
+    "nodejs@20",
+    "gnumake@latest"
+  ],
+  "shell": {
+    "init_hook": [
+      "../../sbx/sbx prepare"
+    ],
+    "scripts": {
+      "elevate":      "exec ../../sbx/sbx elevate",
+      "agent":        "../../sbx/sbx prepare && exec ../../sbx/sbx elevate",
+      "verify":       "../../tests/verify.sh"
+    }
+  }
+}

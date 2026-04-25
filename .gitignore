@@ -1,0 +1,16 @@
+# sbx generates this directory at activation time
+.sandbox/
+
+# devbox locals
+.devbox/
+
+# direnv
+.direnv/
+
+# nix
+result
+result-*
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,33 @@
+# Mise demo: mise manages tool versions, sbx wraps them in a sandbox.
+#
+# Note: mise uses shims by default. We disable them here so PATH points
+# directly at install dirs, which makes the sandbox allowlist meaningful
+# (the kernel sees the real binary, not a shim that re-execs).
+
+[tools]
+python = "3.12"
+node   = "20"
+
+[settings]
+# Prefer direct PATH manipulation over shims; shims would defeat the
+# allowlist because they re-exec via a single mise binary.
+shims = false
+
+[hooks]
+# Fires when entering this directory via mise activate
+enter = "../../sbx/sbx prepare"
+
+[env]
+# Prepend our symlink farm so it wins resolution
+_.path = ["./.sandbox/bin"]
+
+[tasks.elevate]
+description = "Re-exec shell under sandbox-exec"
+run = "exec ../../sbx/sbx elevate"
+
+[tasks.agent]
+description = "Run a shell inside the full sandbox"
+run = "../../sbx/sbx prepare && exec ../../sbx/sbx elevate"
+
+[tasks.verify]
+run = "../../tests/verify.sh"
