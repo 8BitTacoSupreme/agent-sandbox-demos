@@ -8,7 +8,7 @@ The pitch: **the OS solved this**. Whichever environment manager you use,
 the sandbox boundary is the same — `sandbox-exec` on macOS, `bwrap + Landlock`
 on Linux. What changes between rows is the wiring, not the boundary.
 
-![matrix](matrix.svg)
+![matrix](matrix-preview.png)
 
 ## TL;DR
 
