@@ -16,6 +16,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 SBX="$REPO_DIR/sbx/sbx"
 VERIFY="$SCRIPT_DIR/verify.sh"
+PLATFORM="$(uname)"
 
 # Color codes
 if [[ -t 1 ]]; then
@@ -47,12 +48,39 @@ run_demo() {
     return
   fi
 
-  # Run verify.sh inside sandbox-exec (kernel enforcement)
-  local result
-  result=$(env SBX_ACTIVE=1 PATH="$dir/.sandbox/bin" \
-    sandbox-exec -f "$dir/.sandbox/profile.sb" \
-    bash --rcfile "$dir/.sandbox/armor.bash" -ic "source '$dir/.sandbox/armor.bash' && '$VERIFY'" 2>&1)
-  local rc=$?
+  # Run verify.sh inside kernel sandbox (platform-dependent)
+  local result rc
+  case "$PLATFORM" in
+    Darwin)
+      result=$(env SBX_ACTIVE=1 PATH="$dir/.sandbox/bin" \
+        sandbox-exec -f "$dir/.sandbox/profile.sb" \
+        bash --rcfile "$dir/.sandbox/armor.bash" -ic "source '$dir/.sandbox/armor.bash' && '$VERIFY'" 2>&1)
+      rc=$?
+      ;;
+    Linux)
+      if [[ -f "$dir/.sandbox/bwrap.args" ]] && command -v bwrap >/dev/null 2>&1; then
+        local bwrap_args=()
+        while IFS= read -r arg; do
+          bwrap_args+=("$arg")
+        done < "$dir/.sandbox/bwrap.args"
+        result=$(env SBX_ACTIVE=1 PATH="$dir/.sandbox/bin" \
+          bwrap "${bwrap_args[@]}" -- \
+          bash --rcfile "$dir/.sandbox/armor.bash" -ic "source '$dir/.sandbox/armor.bash' && '$VERIFY'" 2>&1)
+        rc=$?
+      else
+        # Shell-only fallback
+        result=$(env SBX_ACTIVE=1 PATH="$dir/.sandbox/bin" \
+          bash --rcfile "$dir/.sandbox/armor.bash" -ic "source '$dir/.sandbox/armor.bash' && '$VERIFY'" 2>&1)
+        rc=$?
+      fi
+      ;;
+    *)
+      # Unknown platform — shell-only
+      result=$(env SBX_ACTIVE=1 PATH="$dir/.sandbox/bin" \
+        bash --rcfile "$dir/.sandbox/armor.bash" -ic "source '$dir/.sandbox/armor.bash' && '$VERIFY'" 2>&1)
+      rc=$?
+      ;;
+  esac
 
   echo "$result"
 
@@ -133,11 +161,23 @@ test_asdf() {
   run_demo "asdf"
 }
 
+test_container() {
+  if ! command -v docker >/dev/null 2>&1 && ! command -v podman >/dev/null 2>&1; then
+    skip_demo "container" "docker/podman not installed"
+    return
+  fi
+  if [[ "$PLATFORM" != "Linux" ]]; then
+    skip_demo "container" "container demo is Linux-native (use Docker Desktop for macOS)"
+    return
+  fi
+  run_demo "container"
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
 
-ALL_DEMOS=(plain-shell flox devbox determinate-nix direnv-nix mise asdf)
+ALL_DEMOS=(plain-shell flox devbox determinate-nix direnv-nix mise asdf container)
 
 # If arguments given, run only those demos
 if [[ $# -gt 0 ]]; then
@@ -147,7 +187,7 @@ else
 fi
 
 echo "${DIM}═══════════════════════════════════════════════════════════════${RESET}"
-echo " agent-sandbox-demos — test suite"
+echo " agent-sandbox-demos — test suite (${PLATFORM})"
 echo "${DIM}═══════════════════════════════════════════════════════════════${RESET}"
 echo
 
@@ -160,6 +200,7 @@ for demo in "${SELECTED[@]}"; do
     direnv-nix)       test_direnv_nix ;;
     mise)             test_mise ;;
     asdf)             test_asdf ;;
+    container)        test_container ;;
     *) echo "${RED}ERROR${RESET}  unknown demo: $demo"; FAILED+=("$demo") ;;
   esac
 done

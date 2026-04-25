@@ -22,14 +22,23 @@ set -euo pipefail
 SBX_DIR=".sandbox"
 REQUISITES="${SBX_REQUISITES:-requisites.txt}"
 POLICY="${SBX_POLICY:-policy.toml}"
+PLATFORM="$(uname)"
 
 # Standard paths every macOS binary needs to read.
-SYS_READ_PATHS=(
+SYS_READ_PATHS_DARWIN=(
   /usr/lib /usr/share /usr/libexec
   /System/Library
   /private/etc /private/var/db /private/var/folders
   /dev/null /dev/urandom /dev/zero /dev/random /dev/tty /dev/dtracehelper
   /Library/Preferences
+)
+
+# Standard paths every Linux binary needs to read.
+SYS_READ_PATHS_LINUX=(
+  /usr /lib /lib64 /etc /bin /sbin
+  /dev/null /dev/urandom /dev/zero /dev/random /dev/tty
+  /proc /sys/kernel/security
+  /nix
 )
 
 # Standard paths denied by default (credentials).
@@ -65,7 +74,7 @@ USAGE
 
 COMMANDS
     prepare              Generate .sandbox/ artifacts (bin/, profile.sb, armor.bash)
-    elevate              Re-exec current shell under sandbox-exec
+    elevate              Re-exec current shell under kernel sandbox
     validate             Dry-run — show what would be enforced
     status               Report active sandbox state
     help                 Show this message
@@ -98,6 +107,13 @@ toml_get() {
     || echo "$default"
 }
 
+# Read a TOML boolean. Returns 0 (true) or 1 (false).
+toml_bool() {
+  local val
+  val="$(toml_get "$1" "${2:-false}")"
+  [[ "$val" == "true" ]]
+}
+
 # Find absolute path of a binary on the current PATH.
 resolve_binary() {
   local name="$1"
@@ -121,6 +137,28 @@ resolve_binary() {
 unique_parents() {
   local paths=("$@")
   printf '%s\n' "${paths[@]}" | xargs -n1 dirname 2>/dev/null | sort -u
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Linux platform probes
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Check if bwrap is available and can create namespaces.
+check_bwrap_available() {
+  command -v bwrap >/dev/null 2>&1 || return 1
+  # Smoke test: can we actually create a minimal namespace?
+  bwrap --ro-bind / / -- /bin/true 2>/dev/null || return 1
+  return 0
+}
+
+# Read Landlock ABI version. Returns 0 if Landlock is unavailable.
+check_landlock_abi() {
+  local abi_file="/sys/kernel/security/landlock/abi_version"
+  if [[ -r "$abi_file" ]]; then
+    cat "$abi_file" 2>/dev/null || echo 0
+  else
+    echo 0
+  fi
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -170,29 +208,43 @@ cmd_prepare() {
   local read_paths
   read_paths=$(unique_parents "${bin_paths[@]}")
 
-  # Pass 4: generate SBPL profile.
-  generate_sbpl "$read_paths" > "$SBX_DIR/profile.sb"
-  say "Wrote $SBX_DIR/profile.sb"
+  # Pass 4: generate platform-specific kernel profile.
+  case "$PLATFORM" in
+    Darwin)
+      generate_sbpl "$read_paths" > "$SBX_DIR/profile.sb"
+      say "Wrote $SBX_DIR/profile.sb"
+      ;;
+    Linux)
+      generate_bwrap_args "$read_paths" > "$SBX_DIR/bwrap.args"
+      say "Wrote $SBX_DIR/bwrap.args"
+      # Also write SBPL for reference/documentation
+      generate_sbpl "$read_paths" > "$SBX_DIR/profile.sb"
+      ;;
+  esac
 
   # Pass 5: generate function armor.
   generate_armor > "$SBX_DIR/armor.bash"
   say "Wrote $SBX_DIR/armor.bash"
 
   # Pass 6: a manifest for status/validate.
+  local landlock_abi=0
+  [[ "$PLATFORM" == "Linux" ]] && landlock_abi="$(check_landlock_abi)"
   {
     echo "# sbx manifest — generated $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "platform=$PLATFORM"
     echo "tools=${#resolved[@]}"
     echo "missing=${#missing[@]}"
     echo "policy=$POLICY"
     echo "network=$(toml_get network blocked)"
     echo "filesystem=$(toml_get filesystem workspace)"
+    [[ "$PLATFORM" == "Linux" ]] && echo "landlock_abi=$landlock_abi"
   } > "$SBX_DIR/manifest"
 
   say "Done. Run 'sbx elevate' to add kernel enforcement."
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# generate_sbpl — emit Seatbelt profile
+# generate_sbpl — emit Seatbelt profile (macOS)
 # ─────────────────────────────────────────────────────────────────────────────
 
 generate_sbpl() {
@@ -222,7 +274,7 @@ generate_sbpl() {
 SBPL
 
   # System paths
-  for p in "${SYS_READ_PATHS[@]}"; do
+  for p in "${SYS_READ_PATHS_DARWIN[@]}"; do
     echo "  (subpath \"$p\")"
   done
 
@@ -290,6 +342,98 @@ SBPL
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
+# generate_bwrap_args — emit bwrap command-line arguments (Linux)
+# ─────────────────────────────────────────────────────────────────────────────
+
+generate_bwrap_args() {
+  local read_paths="$1"
+  local workspace
+  workspace="$(pwd)"
+  local network_mode
+  network_mode="$(toml_get network blocked)"
+  local fs_mode
+  fs_mode="$(toml_get filesystem workspace)"
+  local allow_localhost
+  allow_localhost="$(toml_get allow-localhost true)"
+
+  # Namespace and lifecycle flags
+  echo "--die-with-parent"
+  echo "--new-session"
+  echo "--unshare-pid"
+  echo "--unshare-uts"
+  echo "--unshare-ipc"
+
+  # Network namespace — only if network=blocked AND no localhost needed
+  # (bwrap --unshare-net blocks ALL networking including loopback)
+  if [[ "$network_mode" == "blocked" && "$allow_localhost" != "true" ]]; then
+    echo "--unshare-net"
+  fi
+
+  # /proc and /dev
+  echo "--proc"
+  echo "/proc"
+  echo "--dev"
+  echo "/dev"
+
+  # System read-only bind mounts
+  for sys_path in /usr /lib /lib64 /etc /bin /sbin; do
+    [[ -d "$sys_path" ]] && echo "--ro-bind" && echo "$sys_path" && echo "$sys_path"
+  done
+
+  # Nix store (if present)
+  [[ -d /nix ]] && echo "--ro-bind" && echo "/nix" && echo "/nix"
+
+  # Binary parent directories from resolved requisites
+  while IFS= read -r p; do
+    if [[ -n "$p" ]]; then
+      echo "--ro-bind"
+      echo "$p"
+      echo "$p"
+    fi
+  done <<< "$read_paths"
+
+  # Credential masking — bind /dev/null over sensitive paths
+  for p in "${DENIED_PATHS[@]}"; do
+    if [[ -e "$p" ]]; then
+      echo "--ro-bind"
+      echo "/dev/null"
+      echo "$p"
+    fi
+  done
+
+  # Workspace mount — mode depends on fs policy
+  case "$fs_mode" in
+    permissive)
+      echo "--bind"
+      echo "$workspace"
+      echo "$workspace"
+      ;;
+    strict)
+      echo "--ro-bind"
+      echo "$workspace"
+      echo "$workspace"
+      ;;
+    workspace|*)
+      echo "--bind"
+      echo "$workspace"
+      echo "$workspace"
+      ;;
+  esac
+
+  # Temp directory
+  echo "--tmpfs"
+  echo "/tmp"
+
+  # HOME directory (read-only for shell configs)
+  echo "--ro-bind"
+  echo "$HOME/.bashrc"
+  echo "$HOME/.bashrc"
+  echo "--ro-bind"
+  echo "$HOME/.profile"
+  echo "$HOME/.profile"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
 # generate_armor — shell function armor for package managers
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -333,19 +477,27 @@ FOOTER
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# elevate — re-exec current shell under sandbox-exec
+# elevate — re-exec current shell under kernel sandbox
 # ─────────────────────────────────────────────────────────────────────────────
 
 cmd_elevate() {
-  [[ -f "$SBX_DIR/profile.sb" ]] || die "Run 'sbx prepare' first."
-
   if [[ "${SBX_ACTIVE:-0}" == "1" ]]; then
     say "Already sandboxed — nothing to do."
     return 0
   fi
 
-  if [[ "$(uname)" != "Darwin" ]]; then
-    die "elevate is macOS-only (uses sandbox-exec). On Linux, use the bwrap variant."
+  case "$PLATFORM" in
+    Darwin) cmd_elevate_darwin "$@" ;;
+    Linux)  cmd_elevate_linux "$@" ;;
+    *)      die "Unsupported platform: $PLATFORM" ;;
+  esac
+}
+
+cmd_elevate_darwin() {
+  [[ -f "$SBX_DIR/profile.sb" ]] || die "Run 'sbx prepare' first."
+
+  if ! command -v sandbox-exec >/dev/null 2>&1; then
+    die "sandbox-exec not found. Is this macOS?"
   fi
 
   say "Elevating: re-exec $SHELL under sandbox-exec"
@@ -377,6 +529,128 @@ cmd_elevate() {
   esac
 }
 
+cmd_elevate_linux() {
+  [[ -f "$SBX_DIR/bwrap.args" ]] || [[ -f "$SBX_DIR/profile.sb" ]] || \
+    die "Run 'sbx prepare' first."
+
+  local has_bwrap=false has_landlock=false landlock_abi=0
+
+  if check_bwrap_available; then
+    has_bwrap=true
+    say "bwrap: available"
+  else
+    say "WARNING: bwrap not available — falling back to shell-only enforcement"
+  fi
+
+  landlock_abi="$(check_landlock_abi)"
+  if [[ "$landlock_abi" -ge 1 ]]; then
+    has_landlock=true
+    say "Landlock: ABI v$landlock_abi"
+    [[ "$landlock_abi" -ge 4 ]] && say "Landlock: network enforcement available (ABI >= 4)"
+  else
+    say "WARNING: Landlock not available (kernel too old or LSM disabled)"
+  fi
+
+  # ── Build the execution chain ──
+
+  local workspace
+  workspace="$(pwd)"
+  local fs_mode
+  fs_mode="$(toml_get filesystem workspace)"
+  local network_mode
+  network_mode="$(toml_get network blocked)"
+
+  # Start with the shell invocation
+  local shell_name
+  shell_name="$(basename "${SHELL:-/bin/bash}")"
+  local shell_cmd=("${SHELL:-/bin/bash}")
+  case "$shell_name" in
+    zsh)
+      local zdot="$SBX_DIR/zdot"
+      mkdir -p "$zdot"
+      echo "source \"$(pwd)/$SBX_DIR/armor.bash\"" > "$zdot/.zshrc"
+      ;;
+    *)
+      shell_cmd+=("--rcfile" "$SBX_DIR/armor.bash")
+      ;;
+  esac
+
+  # Layer 1: Landlock (innermost — applied to the process before exec)
+  local landlock_prefix=()
+  if [[ "$has_landlock" == true ]] && command -v sbx-landlock >/dev/null 2>&1; then
+    landlock_prefix=(sbx-landlock
+      "--fs-mode=$fs_mode"
+      "--workspace=$workspace"
+    )
+
+    # Build denied paths arg
+    local denied_csv=""
+    for p in "${DENIED_PATHS[@]}"; do
+      [[ -n "$denied_csv" ]] && denied_csv+=","
+      denied_csv+="$p"
+    done
+    [[ -n "$denied_csv" ]] && landlock_prefix+=("--denied=$denied_csv")
+
+    # Writable paths
+    landlock_prefix+=("--writable=$workspace,/tmp")
+
+    # Read-only overrides
+    landlock_prefix+=("--read-only=$workspace/.git,$workspace/policy.toml")
+
+    # Network mode (ABI >= 4 only)
+    if [[ "$landlock_abi" -ge 4 && "$network_mode" == "blocked" ]]; then
+      landlock_prefix+=("--network=blocked")
+    fi
+
+    landlock_prefix+=(--)
+    say "Elevating: Landlock LSM + bwrap namespaces"
+  elif [[ "$has_landlock" == true ]]; then
+    say "WARNING: sbx-landlock not on PATH — skipping Landlock enforcement"
+  fi
+
+  # Layer 2: bwrap (outermost — namespace isolation)
+  if [[ "$has_bwrap" == true ]]; then
+    local bwrap_args=()
+    while IFS= read -r arg; do
+      bwrap_args+=("$arg")
+    done < "$SBX_DIR/bwrap.args"
+
+    local env_args=(
+      SBX_ACTIVE=1
+      "PATH=$(pwd)/$SBX_DIR/bin"
+      "SHELL=${SHELL:-/bin/bash}"
+    )
+    [[ "$shell_name" == "zsh" ]] && env_args+=("ZDOTDIR=$(pwd)/$SBX_DIR/zdot")
+
+    exec env "${env_args[@]}" \
+      bwrap "${bwrap_args[@]}" -- \
+      "${landlock_prefix[@]}" "${shell_cmd[@]}"
+  elif [[ ${#landlock_prefix[@]} -gt 0 ]]; then
+    # Landlock-only (no bwrap)
+    say "Elevating: Landlock-only (no namespace isolation)"
+    local env_args=(
+      SBX_ACTIVE=1
+      "PATH=$(pwd)/$SBX_DIR/bin"
+      "SHELL=${SHELL:-/bin/bash}"
+    )
+    [[ "$shell_name" == "zsh" ]] && env_args+=("ZDOTDIR=$(pwd)/$SBX_DIR/zdot")
+
+    exec env "${env_args[@]}" \
+      "${landlock_prefix[@]}" "${shell_cmd[@]}"
+  else
+    # Shell-only fallback
+    say "Elevating: shell-only enforcement (no kernel sandbox)"
+    local env_args=(
+      SBX_ACTIVE=1
+      "PATH=$(pwd)/$SBX_DIR/bin"
+      "SHELL=${SHELL:-/bin/bash}"
+    )
+    [[ "$shell_name" == "zsh" ]] && env_args+=("ZDOTDIR=$(pwd)/$SBX_DIR/zdot")
+
+    exec env "${env_args[@]}" "${shell_cmd[@]}"
+  fi
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # validate — dry-run inspector
 # ─────────────────────────────────────────────────────────────────────────────
@@ -386,8 +660,31 @@ cmd_validate() {
   [[ -f "$SBX_DIR/manifest" ]] || die "Run 'sbx prepare' first."
 
   cat "$SBX_DIR/manifest"
-  say "Profile: $SBX_DIR/profile.sb ($(wc -l < "$SBX_DIR/profile.sb") lines)"
   say "Allowlisted binaries: $(ls "$SBX_DIR/bin" 2>/dev/null | wc -l)"
+
+  case "$PLATFORM" in
+    Darwin)
+      [[ -f "$SBX_DIR/profile.sb" ]] && \
+        say "Profile: $SBX_DIR/profile.sb ($(wc -l < "$SBX_DIR/profile.sb") lines)"
+      ;;
+    Linux)
+      [[ -f "$SBX_DIR/bwrap.args" ]] && \
+        say "bwrap args: $SBX_DIR/bwrap.args ($(wc -l < "$SBX_DIR/bwrap.args") lines)"
+      local abi
+      abi="$(check_landlock_abi)"
+      say "Landlock ABI: v$abi"
+      if check_bwrap_available; then
+        say "bwrap: available"
+      else
+        say "bwrap: not available"
+      fi
+      if command -v sbx-landlock >/dev/null 2>&1; then
+        say "sbx-landlock: available"
+      else
+        say "sbx-landlock: not on PATH"
+      fi
+      ;;
+  esac
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -400,6 +697,7 @@ cmd_status() {
   else
     say "Inactive: outside sandbox"
   fi
+  say "Platform: $PLATFORM"
   [[ -f "$SBX_DIR/manifest" ]] && cat "$SBX_DIR/manifest"
 }
 
@@ -463,8 +761,27 @@ case "$CMD" in
   init)     cmd_init "$@" ;;
   --)
     cmd_prepare
-    exec env SBX_ACTIVE=1 PATH="$(pwd)/$SBX_DIR/bin" \
-      sandbox-exec -f "$SBX_DIR/profile.sb" "$@"
+    case "$PLATFORM" in
+      Darwin)
+        exec env SBX_ACTIVE=1 PATH="$(pwd)/$SBX_DIR/bin" \
+          sandbox-exec -f "$SBX_DIR/profile.sb" "$@"
+        ;;
+      Linux)
+        _bwrap_args=()
+        if [[ -f "$SBX_DIR/bwrap.args" ]] && check_bwrap_available; then
+          while IFS= read -r arg; do
+            _bwrap_args+=("$arg")
+          done < "$SBX_DIR/bwrap.args"
+          exec env SBX_ACTIVE=1 PATH="$(pwd)/$SBX_DIR/bin" \
+            bwrap "${_bwrap_args[@]}" -- "$@"
+        else
+          exec env SBX_ACTIVE=1 PATH="$(pwd)/$SBX_DIR/bin" "$@"
+        fi
+        ;;
+      *)
+        exec env SBX_ACTIVE=1 PATH="$(pwd)/$SBX_DIR/bin" "$@"
+        ;;
+    esac
     ;;
   help|-h|--help) usage ;;
   *) usage; exit 1 ;;

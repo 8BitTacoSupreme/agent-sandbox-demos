@@ -1,0 +1,33 @@
+# docker compose up — run a sandboxed agent shell in a container
+#
+# Defense-in-depth layers:
+#   1. seccomp profile (syscall allowlist)
+#   2. read-only root filesystem
+#   3. non-root user (uid 1000)
+#   4. dropped capabilities (only SYS_ADMIN for bwrap namespaces)
+#   5. bwrap namespace isolation (inside the container)
+#   6. Landlock LSM (if kernel supports it)
+#   7. sbx shell-tier enforcement (PATH wipe, armor, requisites)
+
+services:
+  agent:
+    build:
+      context: ../..
+      dockerfile: demos/container/Dockerfile
+    security_opt:
+      - seccomp=seccomp-profile.json
+    cap_add:
+      - SYS_ADMIN      # bwrap needs user namespace creation
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=100M,noexec,nosuid
+    volumes:
+      - workspace:/app/workspace
+    stdin_open: true
+    tty: true
+
+volumes:
+  workspace:
+    driver: local

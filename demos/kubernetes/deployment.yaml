@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sbx-agent
+  labels:
+    app: sbx-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sbx-agent
+  template:
+    metadata:
+      labels:
+        app: sbx-agent
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: Localhost
+          localhostProfile: profiles/sbx-seccomp.json
+      containers:
+        - name: agent
+          image: sbx-agent:latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+              add: ["SYS_ADMIN"]   # bwrap user namespace creation
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"
+              ephemeral-storage: "5Gi"
+          volumeMounts:
+            - name: workspace
+              mountPath: /app/workspace
+            - name: tmp
+              mountPath: /tmp
+            - name: policy
+              mountPath: /app/policy.toml
+              subPath: policy.toml
+              readOnly: true
+            - name: policy
+              mountPath: /app/requisites.txt
+              subPath: requisites.txt
+              readOnly: true
+          env:
+            - name: SBX_POLICY
+              value: /app/policy.toml
+            - name: SBX_REQUISITES
+              value: /app/requisites.txt
+          stdin: true
+          tty: true
+      volumes:
+        - name: workspace
+          emptyDir:
+            sizeLimit: 5Gi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: policy
+          configMap:
+            name: sbx-policy

@@ -1,0 +1,28 @@
+{
+  "name": "sbx-agent-workspace",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "../../.."
+  },
+  "runArgs": [
+    "--cap-add=SYS_ADMIN",
+    "--security-opt=seccomp=unconfined"
+  ],
+  "remoteUser": "agent",
+  "postCreateCommand": "sbx prepare",
+  "postAttachCommand": "echo '[sbx] Run: sbx elevate — to enter the sandbox'",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-vscode.cpptools"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  },
+  "features": {},
+  "forwardPorts": [],
+  "mounts": []
+}

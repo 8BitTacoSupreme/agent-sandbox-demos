@@ -2,7 +2,8 @@
 
 Working demos showing how to apply kernel-level sandboxing to AI coding agents
 across every major dev environment manager: **Flox**, **devbox**, **mise**,
-**asdf**, **direnv + nix-shell**, and **plain Homebrew/system shell**.
+**asdf**, **direnv + nix-shell**, and **plain Homebrew/system shell** — plus
+**containers**, **Kubernetes**, and **cloud dev environments**.
 
 The pitch: **the OS solved this**. Whichever environment manager you use,
 the sandbox boundary is the same — `sandbox-exec` on macOS, `bwrap + Landlock`
@@ -53,15 +54,15 @@ demos/<env-manager>/
 └── <env-config>      devbox.json | mise.toml | .envrc + shell.nix | etc.
 ```
 
-The shared `sbx/sbx` tool (single shell script, ~450 lines) does the
+The shared `sbx/sbx` tool (single shell script, ~600 lines) does the
 common work:
 
 1. Read `requisites.txt`
 2. For each binary, run `command -v` against current PATH
 3. Symlink resolved absolute paths into `.sandbox/bin/`
-4. Generate `.sandbox/profile.sb` (Seatbelt SBPL)
+4. Generate `.sandbox/profile.sb` (Seatbelt SBPL) on macOS, `.sandbox/bwrap.args` on Linux
 5. Generate `.sandbox/armor.bash` (function armor for 26 package managers)
-6. Provide `elevate` to re-exec under sandbox-exec
+6. Provide `elevate` to re-exec under `sandbox-exec` (macOS) or `bwrap` + Landlock (Linux)
 
 ## Two enforcement tiers
 
@@ -69,11 +70,70 @@ common work:
 soon as the env manager activates. It's parseable: blocked actions return
 `[sbx] BLOCKED: <reason>` so agents can adapt.
 
-**Kernel tier** (sandbox-exec / SBPL) is active after `sbx elevate`.
-It catches what the shell tier can't: bash redirections (`> /etc/passwd`),
-absolute-path binary invocations, anything that bypasses your shell.
+**Kernel tier** (sandbox-exec / SBPL on macOS, bwrap + Landlock on Linux)
+is active after `sbx elevate`. It catches what the shell tier can't: bash
+redirections (`> /etc/passwd`), absolute-path binary invocations, anything
+that bypasses your shell.
 
 Both tiers work independently; combined they're defense in depth.
+
+## Platform matrix
+
+`sbx` auto-detects the platform and dispatches to the right kernel backend:
+
+| Platform | Kernel Backend | Namespaces | FS LSM | Network | Notes |
+|----------|---------------|------------|--------|---------|-------|
+| **macOS** | sandbox-exec (SBPL) | N/A | Seatbelt | Seatbelt | Apple Silicon + Intel |
+| **Linux 6.7+** | bwrap + Landlock | PID, UTS, IPC, net | Landlock v4 | Landlock v4 | Full enforcement |
+| **Linux 5.13–6.6** | bwrap + Landlock | PID, UTS, IPC, net | Landlock v1-3 | bwrap only | No Landlock network |
+| **Linux < 5.13** | bwrap only | PID, UTS, IPC, net | None | bwrap only | No Landlock |
+| **Linux (no bwrap)** | Landlock only | None | Landlock | Landlock (v4+) | No namespace isolation |
+| **Any (fallback)** | Shell-only | None | None | None | PATH + armor + requisites |
+
+## Linux — bwrap + Landlock
+
+On Linux, `sbx elevate` uses [bubblewrap](https://github.com/containers/bubblewrap)
+for namespace isolation and [Landlock](https://landlock.io/) for kernel-level
+filesystem (and on 6.7+, network) access control.
+
+### How it works
+
+1. **bwrap** creates PID, UTS, IPC namespaces (and optionally net). It
+   bind-mounts system paths read-only, the workspace read-write, and
+   `/dev/null` over credential paths (`.ssh`, `.aws`, `.gnupg`).
+2. **sbx-landlock** (a small Go helper) applies a Landlock ruleset before
+   exec'ing the shell. Landlock rules are additive — anything without an
+   explicit rule gets denied. This catches symlink traversal, `/proc` escapes,
+   and any path not in the allowlist.
+3. **Shell tier** (same as macOS) provides function armor, requisites
+   filtering, and PATH isolation.
+
+### Graceful degradation
+
+`sbx` probes for bwrap and Landlock at runtime and uses whatever's available:
+
+| bwrap | Landlock ABI | Result |
+|-------|-------------|--------|
+| yes | >= 4 (6.7+) | Full: bwrap namespaces + Landlock FS + Landlock network |
+| yes | 1-3 (5.13-6.6) | bwrap namespaces + Landlock FS, no Landlock network |
+| yes | 0 | bwrap-only: namespace isolation, no LSM |
+| no | >= 1 | Landlock-only: LSM FS enforcement, no namespace isolation |
+| no | 0 | Shell-only: PATH wipe + armor + requisites |
+
+### sbx-landlock
+
+Landlock requires `landlock_create_ruleset` / `landlock_add_rule` /
+`landlock_restrict_self` syscalls that bash cannot invoke. `sbx-landlock` is
+a zero-dependency Go binary (build-tagged `linux`) that applies the ruleset
+and execs the target command. Build it with:
+
+```bash
+cd sbx/sbx-landlock
+CGO_ENABLED=0 go build -o sbx-landlock .
+```
+
+If `sbx-landlock` is not on PATH, `sbx elevate` falls back to bwrap-only
+enforcement and logs a warning.
 
 ## Trust properties (what changes per row)
 
@@ -91,18 +151,22 @@ where the binaries came from. Trust differences matter for "parallel
 process tampered with the binary" or "binary supply-chain attack" scenarios,
 where the Nix-backed options give you more.
 
-## Linux story
+## Defense-in-depth (container / K8s deployments)
 
-This implementation is macOS-only (uses `sandbox-exec` / SBPL). The Linux
-equivalent swaps the SBPL profile generator for a `bwrap` invocation and
-a Landlock policy. Same `requisites.txt`, same `policy.toml`, different
-backend. A `sbx-linux` companion is left as an exercise — the structure
-of every demo would be identical (only the elevate step changes).
+When running in containers or Kubernetes, sbx layers on top of the
+platform's own isolation:
 
-`bwrap` constructs mount, pid, network, and user namespaces directly. No
-daemon, no image layer. Pair it with Landlock — a kernel-level LSM that
-enforces filesystem access at the syscall layer — for symlink-resistant,
-`/proc`-resistant, kernel-policy-enforced isolation.
+| # | Layer | macOS (local) | Linux (container/K8s) |
+|---|-------|--------------|----------------------|
+| 1 | **Syscall filter** | Seatbelt (SBPL deny default) | seccomp profile |
+| 2 | **Namespace isolation** | N/A | bwrap (PID, UTS, IPC, net) |
+| 3 | **FS access control** | Seatbelt file-read/write rules | Landlock LSM |
+| 4 | **Network control** | Seatbelt network rules | Landlock net (6.7+) / bwrap --unshare-net / NetworkPolicy |
+| 5 | **Credential masking** | Seatbelt deny on ~/.ssh etc. | bwrap binds /dev/null over paths |
+| 6 | **PATH isolation** | Symlink farm in .sandbox/bin/ | Same |
+| 7 | **Function armor** | Shell functions return 126 | Same |
+| 8 | **Container hardening** | N/A | Read-only rootfs, non-root user, dropped caps |
+| 9 | **K8s policies** | N/A | NetworkPolicy, Pod SecurityContext, resource limits |
 
 ## Inspiration
 
@@ -114,7 +178,9 @@ points at sandflox directly — if you're already on Flox, use that.
 
 ## Running a demo
 
-Pick your env manager and follow its README:
+Pick your environment and follow its README:
+
+### Local (env manager)
 
 - [demos/flox/](demos/flox/) — pointer to sandflox (Flox users go there)
 - [demos/devbox/](demos/devbox/) — Nix-backed, JSON config
@@ -123,6 +189,12 @@ Pick your env manager and follow its README:
 - [demos/mise/](demos/mise/) — versioned tools, `shims=false` required
 - [demos/asdf/](demos/asdf/) — same shape as mise
 - [demos/plain-shell/](demos/plain-shell/) — no env manager, just Homebrew
+
+### Container / Cloud
+
+- [demos/container/](demos/container/) — Docker / Podman with seccomp + bwrap + Landlock
+- [demos/kubernetes/](demos/kubernetes/) — K8s deployment with NetworkPolicy + seccomp + defense-in-depth
+- [demos/cloud-dev/](demos/cloud-dev/) — Codespaces / Gitpod devcontainer
 
 Every demo ends with a sandboxed shell where you can launch an agent:
 
@@ -141,10 +213,10 @@ arithmetic). Pass = all blocks blocked, all allows allowed.
 
 ## Caveats
 
-- macOS only for now (the SBPL profile generator). Linux requires bwrap+Landlock
-  glue not yet written.
 - macOS Apple-Silicon tested; Intel macs should work but binary paths differ
   (`/usr/local/Homebrew` instead of `/opt/homebrew`).
+- Linux requires bwrap and/or kernel 5.13+ for full enforcement. Shell-tier
+  enforcement works everywhere.
 - The function armor blocks 26 package managers by name. An agent that finds
   a 27th one we didn't list slips through the shell tier — but the kernel
   tier still blocks anything trying to write outside the workspace, so the

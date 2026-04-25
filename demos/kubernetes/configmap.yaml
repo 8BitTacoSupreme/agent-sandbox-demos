@@ -1,0 +1,63 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sbx-policy
+data:
+  policy.toml: |
+    [meta]
+    version = "1"
+    profile = "default"
+
+    [network]
+    mode = "blocked"
+    allow-localhost = true
+
+    [filesystem]
+    mode = "workspace"
+    writable = [".", "/tmp"]
+    denied = ["~/.ssh", "~/.aws", "~/.gnupg", "~/.kube", "~/.config/gh"]
+
+    [security]
+    env-passthrough = []
+
+  requisites.txt: |
+    # Core shell utilities
+    bash
+    sh
+    cat
+    ls
+    echo
+    pwd
+    cd
+    mkdir
+    rmdir
+    rm
+    cp
+    mv
+    ln
+    chmod
+    test
+
+    # Text processing
+    grep
+    sed
+    awk
+    head
+    tail
+    sort
+    uniq
+    wc
+    cut
+    tr
+    tee
+
+    # File inspection
+    find
+    file
+    stat
+    diff
+
+    # Dev essentials
+    git
+    jq
+    python3

@@ -11,6 +11,9 @@
 result
 result-*
 
+# Go build artifacts (compiled binary, not the source directory)
+sbx/sbx-landlock/sbx-landlock
+
 # OS
 .DS_Store
 Thumbs.db

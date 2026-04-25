@@ -1,0 +1,36 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sbx-agent-deny-all
+spec:
+  podSelector:
+    matchLabels:
+      app: sbx-agent
+  policyTypes:
+    - Ingress
+    - Egress
+  # Default: deny everything
+  ingress: []
+  egress:
+    # Allow DNS resolution (required for any network operation)
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# Optional: apply this instead of the above for network=unrestricted mode
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sbx-agent-allow-egress
+spec:
+  podSelector:
+    matchLabels:
+      app: sbx-agent
+      sbx-network: unrestricted
+  policyTypes:
+    - Egress
+  egress:
+    - {}  # allow all egress

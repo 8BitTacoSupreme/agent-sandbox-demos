@@ -15,6 +15,7 @@ set +e  # we expect things to fail
 
 PASS=0
 FAIL=0
+PLATFORM="$(uname)"
 
 # Color codes (auto-disable if not a TTY)
 if [[ -t 1 ]]; then
@@ -47,7 +48,7 @@ expect_allow() {
   fi
 }
 
-echo "${DIM}── Verifying sandbox enforcement ──${RESET}"
+echo "${DIM}── Verifying sandbox enforcement (${PLATFORM}) ──${RESET}"
 echo
 
 # ── BLOCK: package managers (shell-tier function armor) ──
@@ -79,6 +80,7 @@ expect_block "python3 -m venv"                  python3 -m venv /tmp/escape-venv
 # ── ALLOW: workspace operations ──
 expect_allow "write to ./test.tmp"              bash -c 'echo ok > ./sbx-test.tmp'
 expect_allow "read ./README.md"                 test -f README.md
+# /tmp path: macOS resolves to /private/tmp, Linux uses /tmp directly
 expect_allow "write to /tmp"                    bash -c 'echo ok > /tmp/sbx-test.tmp'
 expect_allow "git status"                       git status
 
