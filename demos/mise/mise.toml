@@ -15,7 +15,7 @@ shims = false
 
 [hooks]
 # Fires when entering this directory via mise activate
-enter = "../../sbx/agent-sbx prepare"
+enter = "../../agent-sbx/agent-sbx prepare"
 
 [env]
 # Prepend our symlink farm so it wins resolution
@@ -23,11 +23,11 @@ _.path = ["./.sandbox/bin"]
 
 [tasks.elevate]
 description = "Re-exec shell under sandbox-exec"
-run = "exec ../../sbx/agent-sbx elevate"
+run = "exec ../../agent-sbx/agent-sbx elevate"
 
 [tasks.agent]
 description = "Run a shell inside the full sandbox"
-run = "../../sbx/agent-sbx prepare && exec ../../sbx/agent-sbx elevate"
+run = "../../agent-sbx/agent-sbx prepare && exec ../../agent-sbx/agent-sbx elevate"
 
 [tasks.verify]
 run = "../../tests/verify.sh"

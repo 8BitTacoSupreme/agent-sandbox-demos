@@ -20,10 +20,10 @@ if [[ ${#missing[@]} -gt 0 ]]; then
 fi
 
 # Run agent-sbx prepare against the current PATH.
-../../sbx/agent-sbx prepare
+../../agent-sbx/agent-sbx prepare
 
 echo
 echo "Sandbox prepared. Next steps:"
-echo "  ../../sbx/agent-sbx elevate    # add kernel enforcement"
+echo "  ../../agent-sbx/agent-sbx elevate    # add kernel enforcement"
 echo "  # or run a single command:"
-echo "  ../../sbx/agent-sbx -- bash    # interactive shell, fully sandboxed"
+echo "  ../../agent-sbx/agent-sbx -- bash    # interactive shell, fully sandboxed"

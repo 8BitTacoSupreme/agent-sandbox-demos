@@ -19,7 +19,7 @@ then resolves binaries against those paths.
 
 ```bash
 ./activate.sh           # installs tools, sets up PATH, runs agent-sbx prepare
-../../sbx/agent-sbx elevate   # kernel enforcement
+../../agent-sbx/agent-sbx elevate   # kernel enforcement
 ```
 
 ## See also

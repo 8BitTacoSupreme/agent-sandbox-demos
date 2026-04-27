@@ -27,8 +27,8 @@ same sandbox architecture as a single shell script:
 
 ```bash
 cd demos/plain-shell          # or any other demo directory
-../../sbx/agent-sbx prepare
-../../sbx/agent-sbx elevate
+../../agent-sbx/agent-sbx prepare
+../../agent-sbx/agent-sbx elevate
 ```
 
 ## Why use sandflox over `agent-sbx` if you're on Flox

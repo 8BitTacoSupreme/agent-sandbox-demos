@@ -12,6 +12,6 @@ fi
 # nix develop runs the shellHook (which calls agent-sbx prepare), then we re-exec
 # the whole thing under sandbox-exec for kernel enforcement.
 exec nix develop --command bash -c '
-  ../../sbx/agent-sbx prepare
-  exec ../../sbx/agent-sbx elevate
+  ../../agent-sbx/agent-sbx prepare
+  exec ../../agent-sbx/agent-sbx elevate
 '

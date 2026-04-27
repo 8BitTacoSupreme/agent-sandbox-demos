@@ -33,10 +33,10 @@
           # interactive session, but makes the artifacts available before
           # anything inside the shell runs.
           shellHook = ''
-            ../../sbx/agent-sbx prepare
+            ../../agent-sbx/agent-sbx prepare
             export PATH="$PWD/.sandbox/bin:$PATH"
-            alias elevate='exec ../../sbx/agent-sbx elevate'
-            alias agent='exec ../../sbx/agent-sbx elevate'
+            alias elevate='exec ../../agent-sbx/agent-sbx elevate'
+            alias agent='exec ../../agent-sbx/agent-sbx elevate'
           '';
         };
       });

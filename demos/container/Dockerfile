@@ -20,19 +20,19 @@ RUN apk add --no-cache \
 
 WORKDIR /app
 
-# Copy sbx tool and config
-COPY ../../sbx/sbx /usr/local/bin/sbx
-COPY requisites.txt policy.toml ./
+# Copy agent-sbx tool and config
+COPY agent-sbx/agent-sbx /usr/local/bin/agent-sbx
+COPY demos/container/requisites.txt demos/container/policy.toml ./
 
 # Bake the sandbox artifacts
-RUN chmod +x /usr/local/bin/sbx && agent-sbx prepare
+RUN chmod +x /usr/local/bin/agent-sbx && agent-sbx prepare
 
 # ── Stage 2: build sbx-landlock ─────────────────────────────────────────────
 
 FROM cgr.dev/chainguard/go:latest AS landlock-builder
 
 WORKDIR /src
-COPY ../../sbx/sbx-landlock/ ./
+COPY agent-sbx/agent-sbx-landlock/ ./
 RUN CGO_ENABLED=0 go build -o /sbx-landlock .
 
 # ── Stage 3: runtime image ──────────────────────────────────────────────────
@@ -51,10 +51,10 @@ WORKDIR /app
 COPY --from=builder /app/.sandbox/ .sandbox/
 COPY --from=builder /app/requisites.txt /app/policy.toml ./
 COPY --from=landlock-builder /sbx-landlock /usr/local/bin/sbx-landlock
-COPY ../../sbx/sbx /usr/local/bin/sbx
-COPY ../../tests/ /app/tests/
+COPY agent-sbx/agent-sbx /usr/local/bin/agent-sbx
+COPY tests/ /app/tests/
 
-RUN chmod +x /usr/local/bin/sbx /usr/local/bin/sbx-landlock
+RUN chmod +x /usr/local/bin/agent-sbx /usr/local/bin/sbx-landlock
 
 # Fix ownership
 RUN chown -R agent:agent /app

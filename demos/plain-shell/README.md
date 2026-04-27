@@ -26,10 +26,10 @@ manager but still want kernel-level isolation for AI agents.
 ./activate.sh
 
 # Add kernel enforcement
-../../sbx/agent-sbx elevate
+../../agent-sbx/agent-sbx elevate
 
 # Or run a one-shot sandboxed command
-../../sbx/agent-sbx -- bash
+../../agent-sbx/agent-sbx -- bash
 ```
 
 ## Caveats

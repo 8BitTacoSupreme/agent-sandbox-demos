@@ -17,11 +17,11 @@
   ],
   "shell": {
     "init_hook": [
-      "../../sbx/agent-sbx prepare"
+      "../../agent-sbx/agent-sbx prepare"
     ],
     "scripts": {
-      "elevate":      "exec ../../sbx/agent-sbx elevate",
-      "agent":        "../../sbx/agent-sbx prepare && exec ../../sbx/agent-sbx elevate",
+      "elevate":      "exec ../../agent-sbx/agent-sbx elevate",
+      "agent":        "../../agent-sbx/agent-sbx prepare && exec ../../agent-sbx/agent-sbx elevate",
       "verify":       "../../tests/verify.sh"
     }
   }

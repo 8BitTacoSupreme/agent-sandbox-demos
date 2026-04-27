@@ -27,10 +27,10 @@ NEW_PATH="$(IFS=:; echo "${ASDF_BINS[*]}"):$PATH"
 export PATH="$NEW_PATH"
 
 # Now the same flow as the other demos
-../../sbx/agent-sbx prepare
+../../agent-sbx/agent-sbx prepare
 
 echo
 echo "Sandbox prepared. Next steps:"
-echo "  ../../sbx/agent-sbx elevate"
+echo "  ../../agent-sbx/agent-sbx elevate"
 echo "  # or in one step:"
-echo "  ../../sbx/agent-sbx -- bash"
+echo "  ../../agent-sbx/agent-sbx -- bash"
