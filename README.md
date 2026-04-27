@@ -3,7 +3,7 @@
 Working demos showing how to apply kernel-level sandboxing to AI coding agents
 across every major dev environment manager: **Flox**, **devbox**, **mise**,
 **asdf**, **direnv + nix-shell**, and **plain Homebrew/system shell** — plus
-**containers**, **Kubernetes**, and **cloud dev environments**.
+**containers**, **Kubernetes**, **cloud dev environments**, and **IDE integrations**.
 
 The pitch: **the OS solved this**. Whichever environment manager you use,
 the sandbox boundary is the same — `sandbox-exec` on macOS, `bwrap + Landlock`
@@ -195,6 +195,15 @@ Pick your environment and follow its README:
 - [demos/container/](demos/container/) — Docker / Podman with seccomp + bwrap + Landlock
 - [demos/kubernetes/](demos/kubernetes/) — K8s deployment with NetworkPolicy + seccomp + defense-in-depth
 - [demos/cloud-dev/](demos/cloud-dev/) — Codespaces / Gitpod devcontainer
+- [demos/coder/](demos/coder/) — Coder workspace template (Docker-based, Terraform)
+
+### IDE
+
+- [demos/vscode/](demos/vscode/) — VS Code / Cursor terminal profile (sandboxed default terminal)
+
+### Proof of concept
+
+- [poc/extension-bypass/](poc/extension-bypass/) — VS Code extension proving `workspace.fs` bypasses terminal sandboxing
 
 Every demo ends with a sandboxed shell where you can launch an agent:
 
