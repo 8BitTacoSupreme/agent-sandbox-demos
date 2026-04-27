@@ -1,0 +1,27 @@
+{
+  // VS Code / Cursor terminal profile — sandboxed agent shell
+  //
+  // Adds a "Sandboxed" terminal profile that launches through activate.sh,
+  // which runs agent-sbx prepare + elevate. Set as the default profile
+  // so every new terminal panel is sandboxed automatically.
+
+  // macOS
+  "terminal.integrated.profiles.osx": {
+    "Sandboxed": {
+      "path": "bash",
+      "args": ["${workspaceFolder}/demos/vscode/activate.sh"],
+      "icon": "shield"
+    }
+  },
+  "terminal.integrated.defaultProfile.osx": "Sandboxed",
+
+  // Linux
+  "terminal.integrated.profiles.linux": {
+    "Sandboxed": {
+      "path": "bash",
+      "args": ["${workspaceFolder}/demos/vscode/activate.sh"],
+      "icon": "shield"
+    }
+  },
+  "terminal.integrated.defaultProfile.linux": "Sandboxed"
+}
