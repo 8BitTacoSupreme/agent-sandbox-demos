@@ -22,7 +22,7 @@ processes outside the sandbox, Nix-backed env managers are stronger.
 # Trust the project (mise security)
 mise trust
 
-# Activate — `enter` hook calls sbx prepare automatically
+# Activate — `enter` hook calls agent-sbx prepare automatically
 cd .  # or `mise activate` if not auto-activating
 
 # Add kernel enforcement

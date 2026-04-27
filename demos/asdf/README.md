@@ -6,7 +6,7 @@ Trust property is the same: versioned but not input-addressed.
 
 The notable difference: asdf doesn't support disabling shims the way mise does.
 This demo bypasses asdf's shim layer by reading `.tool-versions`, locating the
-real install directories, and prepending them to PATH directly. `sbx prepare`
+real install directories, and prepending them to PATH directly. `agent-sbx prepare`
 then resolves binaries against those paths.
 
 ## Prerequisites
@@ -18,8 +18,8 @@ then resolves binaries against those paths.
 ## Run
 
 ```bash
-./activate.sh           # installs tools, sets up PATH, runs sbx prepare
-../../sbx/sbx elevate   # kernel enforcement
+./activate.sh           # installs tools, sets up PATH, runs agent-sbx prepare
+../../sbx/agent-sbx elevate   # kernel enforcement
 ```
 
 ## See also

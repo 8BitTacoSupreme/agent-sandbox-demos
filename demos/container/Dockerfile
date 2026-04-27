@@ -1,13 +1,13 @@
 # =============================================================================
-# sbx container — Chainguard Wolfi-based sandboxed agent runtime
+# agent-sbx container — Chainguard Wolfi-based sandboxed agent runtime
 # =============================================================================
 # Multi-stage build:
-#   Stage 1 (builder): install tools, bake symlink farm with sbx prepare
+#   Stage 1 (builder): install tools, bake symlink farm with agent-sbx prepare
 #   Stage 2 (landlock): build sbx-landlock Go helper
 #   Stage 3 (runtime): minimal image with pre-baked sandbox artifacts
 #
-# Build:  docker build -t sbx-agent .
-# Run:    docker run --rm -it --security-opt seccomp=seccomp-profile.json sbx-agent
+# Build:  docker build -t agent-sbx .
+# Run:    docker run --rm -it --security-opt seccomp=seccomp-profile.json agent-sbx
 # =============================================================================
 
 # ── Stage 1: build sandbox artifacts ────────────────────────────────────────
@@ -25,7 +25,7 @@ COPY ../../sbx/sbx /usr/local/bin/sbx
 COPY requisites.txt policy.toml ./
 
 # Bake the sandbox artifacts
-RUN chmod +x /usr/local/bin/sbx && sbx prepare
+RUN chmod +x /usr/local/bin/sbx && agent-sbx prepare
 
 # ── Stage 2: build sbx-landlock ─────────────────────────────────────────────
 
@@ -61,5 +61,5 @@ RUN chown -R agent:agent /app
 
 USER agent
 
-# sbx elevate re-execs the shell under bwrap + Landlock
+# agent-sbx elevate re-execs the shell under bwrap + Landlock
 ENTRYPOINT ["sbx", "elevate"]

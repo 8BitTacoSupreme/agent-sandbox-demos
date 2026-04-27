@@ -25,7 +25,7 @@ Each demo:
   mise.toml, .envrc + shell.nix, etc.)
 - Shares the same `requisites.txt` (the agent's allowlist) and `policy.toml`
   (workspace, network, denied paths)
-- Wires up the `sbx` tool to generate `.sandbox/{bin,profile.sb,armor.bash}`
+- Wires up the `agent-sbx` tool to generate `.sandbox/{bin,profile.sb,armor.bash}`
   on activation
 - Provides a one-command path to launch a sandboxed agent shell
 
@@ -54,7 +54,7 @@ demos/<env-manager>/
 └── <env-config>      devbox.json | mise.toml | .envrc + shell.nix | etc.
 ```
 
-The shared `sbx/sbx` tool (single shell script, ~600 lines) does the
+The shared `agent-sbx/agent-sbx` tool (single shell script, ~600 lines) does the
 common work:
 
 1. Read `requisites.txt`
@@ -68,10 +68,10 @@ common work:
 
 **Shell tier** (PATH wipe + symlink farm + function armor) is active as
 soon as the env manager activates. It's parseable: blocked actions return
-`[sbx] BLOCKED: <reason>` so agents can adapt.
+`[agent-sbx] BLOCKED: <reason>` so agents can adapt.
 
 **Kernel tier** (sandbox-exec / SBPL on macOS, bwrap + Landlock on Linux)
-is active after `sbx elevate`. It catches what the shell tier can't: bash
+is active after `agent-sbx elevate`. It catches what the shell tier can't: bash
 redirections (`> /etc/passwd`), absolute-path binary invocations, anything
 that bypasses your shell.
 
@@ -79,7 +79,7 @@ Both tiers work independently; combined they're defense in depth.
 
 ## Platform matrix
 
-`sbx` auto-detects the platform and dispatches to the right kernel backend:
+`agent-sbx` auto-detects the platform and dispatches to the right kernel backend:
 
 | Platform | Kernel Backend | Namespaces | FS LSM | Network | Notes |
 |----------|---------------|------------|--------|---------|-------|
@@ -92,7 +92,7 @@ Both tiers work independently; combined they're defense in depth.
 
 ## Linux — bwrap + Landlock
 
-On Linux, `sbx elevate` uses [bubblewrap](https://github.com/containers/bubblewrap)
+On Linux, `agent-sbx elevate` uses [bubblewrap](https://github.com/containers/bubblewrap)
 for namespace isolation and [Landlock](https://landlock.io/) for kernel-level
 filesystem (and on 6.7+, network) access control.
 
@@ -101,7 +101,7 @@ filesystem (and on 6.7+, network) access control.
 1. **bwrap** creates PID, UTS, IPC namespaces (and optionally net). It
    bind-mounts system paths read-only, the workspace read-write, and
    `/dev/null` over credential paths (`.ssh`, `.aws`, `.gnupg`).
-2. **sbx-landlock** (a small Go helper) applies a Landlock ruleset before
+2. **agent-sbx-landlock** (a small Go helper) applies a Landlock ruleset before
    exec'ing the shell. Landlock rules are additive — anything without an
    explicit rule gets denied. This catches symlink traversal, `/proc` escapes,
    and any path not in the allowlist.
@@ -110,7 +110,7 @@ filesystem (and on 6.7+, network) access control.
 
 ### Graceful degradation
 
-`sbx` probes for bwrap and Landlock at runtime and uses whatever's available:
+`agent-sbx` probes for bwrap and Landlock at runtime and uses whatever's available:
 
 | bwrap | Landlock ABI | Result |
 |-------|-------------|--------|
@@ -120,19 +120,19 @@ filesystem (and on 6.7+, network) access control.
 | no | >= 1 | Landlock-only: LSM FS enforcement, no namespace isolation |
 | no | 0 | Shell-only: PATH wipe + armor + requisites |
 
-### sbx-landlock
+### agent-sbx-landlock
 
 Landlock requires `landlock_create_ruleset` / `landlock_add_rule` /
-`landlock_restrict_self` syscalls that bash cannot invoke. `sbx-landlock` is
+`landlock_restrict_self` syscalls that bash cannot invoke. `agent-sbx-landlock` is
 a zero-dependency Go binary (build-tagged `linux`) that applies the ruleset
 and execs the target command. Build it with:
 
 ```bash
-cd sbx/sbx-landlock
-CGO_ENABLED=0 go build -o sbx-landlock .
+cd agent-sbx/agent-sbx-landlock
+CGO_ENABLED=0 go build -o agent-sbx-landlock .
 ```
 
-If `sbx-landlock` is not on PATH, `sbx elevate` falls back to bwrap-only
+If `agent-sbx-landlock` is not on PATH, `agent-sbx elevate` falls back to bwrap-only
 enforcement and logs a warning.
 
 ## Trust properties (what changes per row)
@@ -153,7 +153,7 @@ where the Nix-backed options give you more.
 
 ## Defense-in-depth (container / K8s deployments)
 
-When running in containers or Kubernetes, sbx layers on top of the
+When running in containers or Kubernetes, agent-sbx layers on top of the
 platform's own isolation:
 
 | # | Layer | macOS (local) | Linux (container/K8s) |
@@ -171,7 +171,7 @@ platform's own isolation:
 ## Inspiration
 
 The architecture is heavily inspired by [sandflox](https://github.com/flox/sandflox),
-which ships this pattern as a Flox-native package. `sbx` is essentially a
+which ships this pattern as a Flox-native package. `agent-sbx` is essentially a
 portable shell-script reimplementation of sandflox's core, designed to
 work downstream of any environment manager. The Flox demo in this repo
 points at sandflox directly — if you're already on Flox, use that.

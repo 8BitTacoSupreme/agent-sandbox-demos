@@ -15,7 +15,7 @@ path (which would invalidate the allowlist).
 ## Run
 
 ```bash
-# Enter the devbox shell — sbx prepare runs automatically via init_hook
+# Enter the devbox shell — agent-sbx prepare runs automatically via init_hook
 devbox shell
 
 # What you have now: PATH-restricted shell, but no kernel enforcement yet.

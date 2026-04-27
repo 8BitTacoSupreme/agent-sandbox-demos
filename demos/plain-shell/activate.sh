@@ -6,7 +6,7 @@
 
 set -e
 
-# Sanity check — these need to exist on PATH for sbx to find them.
+# Sanity check — these need to exist on PATH for agent-sbx to find them.
 need=(bash cat ls grep sed awk find git jq curl python3)
 missing=()
 for tool in "${need[@]}"; do
@@ -19,11 +19,11 @@ if [[ ${#missing[@]} -gt 0 ]]; then
   exit 1
 fi
 
-# Run sbx prepare against the current PATH.
-../../sbx/sbx prepare
+# Run agent-sbx prepare against the current PATH.
+../../sbx/agent-sbx prepare
 
 echo
 echo "Sandbox prepared. Next steps:"
-echo "  ../../sbx/sbx elevate    # add kernel enforcement"
+echo "  ../../sbx/agent-sbx elevate    # add kernel enforcement"
 echo "  # or run a single command:"
-echo "  ../../sbx/sbx -- bash    # interactive shell, fully sandboxed"
+echo "  ../../sbx/agent-sbx -- bash    # interactive shell, fully sandboxed"

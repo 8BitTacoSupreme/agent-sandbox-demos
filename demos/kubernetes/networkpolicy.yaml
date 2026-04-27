@@ -1,11 +1,11 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: sbx-agent-deny-all
+  name: agent-sbx-deny-all
 spec:
   podSelector:
     matchLabels:
-      app: sbx-agent
+      app: agent-sbx
   policyTypes:
     - Ingress
     - Egress
@@ -24,12 +24,12 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: sbx-agent-allow-egress
+  name: agent-sbx-allow-egress
 spec:
   podSelector:
     matchLabels:
-      app: sbx-agent
-      sbx-network: unrestricted
+      app: agent-sbx
+      agent-sbx-network: unrestricted
   policyTypes:
     - Egress
   egress:

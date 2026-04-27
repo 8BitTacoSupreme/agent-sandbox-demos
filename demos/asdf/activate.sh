@@ -22,15 +22,15 @@ while IFS= read -r line; do
   [[ -d "$d" ]] && ASDF_BINS+=("$d")
 done < .tool-versions
 
-# Prepend the real install dirs to PATH so sbx prepare resolves correctly
+# Prepend the real install dirs to PATH so agent-sbx prepare resolves correctly
 NEW_PATH="$(IFS=:; echo "${ASDF_BINS[*]}"):$PATH"
 export PATH="$NEW_PATH"
 
 # Now the same flow as the other demos
-../../sbx/sbx prepare
+../../sbx/agent-sbx prepare
 
 echo
 echo "Sandbox prepared. Next steps:"
-echo "  ../../sbx/sbx elevate"
+echo "  ../../sbx/agent-sbx elevate"
 echo "  # or in one step:"
-echo "  ../../sbx/sbx -- bash"
+echo "  ../../sbx/agent-sbx -- bash"

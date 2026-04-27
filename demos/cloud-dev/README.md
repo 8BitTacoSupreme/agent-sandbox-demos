@@ -11,7 +11,7 @@ devcontainer spec.
 4. Once the terminal is ready:
 
 ```bash
-sbx elevate    # enter the sandbox
+agent-sbx elevate    # enter the sandbox
 ```
 
 ## Gitpod
@@ -21,15 +21,15 @@ sbx elevate    # enter the sandbox
    https://gitpod.io/#https://github.com/your-fork/agent-sandbox-demos
    ```
 2. Gitpod builds the devcontainer image automatically
-3. Run `sbx prepare && sbx elevate` in the terminal
+3. Run `agent-sbx prepare && agent-sbx elevate` in the terminal
 
 ## What happens
 
 - The devcontainer builds a Wolfi-based image with bash, coreutils, git,
   jq, python3, and bubblewrap
-- `postCreateCommand` runs `sbx prepare` to bake the symlink farm and
+- `postCreateCommand` runs `agent-sbx prepare` to bake the symlink farm and
   armor scripts
-- You run `sbx elevate` to enter the bwrap + Landlock sandbox
+- You run `agent-sbx elevate` to enter the bwrap + Landlock sandbox
 
 ## Verify
 

@@ -45,7 +45,7 @@ lives at `/nix/store/<hash>/bin/<n>`, input-addressed and immutable.
 
 ```bash
 direnv allow
-cd .                 # enters the flake dev shell, runs sbx prepare
+cd .                 # enters the flake dev shell, runs agent-sbx prepare
 elevate              # adds kernel enforcement
 # or:
 agent                # one shot — full sandbox in a fresh shell

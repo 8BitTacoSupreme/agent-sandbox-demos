@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: sbx-policy
+  name: agent-sbx-policy
 data:
   policy.toml: |
     [meta]

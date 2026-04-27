@@ -2,7 +2,7 @@
 # =============================================================================
 # verify.sh — test that the sandbox actually blocks what it claims to block
 # =============================================================================
-# Run this from inside a sandboxed shell (after sbx elevate). It tries
+# Run this from inside a sandboxed shell (after agent-sbx elevate). It tries
 # every escape vector in the sandflox threat model and reports which were
 # blocked vs which got through.
 #
@@ -61,7 +61,7 @@ expect_block "go install something"             go install ./...
 # ── BLOCK: filesystem writes outside workspace (kernel-tier) ──
 expect_block "write to /etc"                    bash -c 'echo pwned > /etc/test 2>/dev/null'
 expect_block "write to /usr/local"              bash -c 'echo pwned > /usr/local/test 2>/dev/null'
-expect_block "write to ~ (home root)"           bash -c "echo pwned > $HOME/sbx-escape-test 2>/dev/null"
+expect_block "write to ~ (home root)"           bash -c "echo pwned > $HOME/agent-sbx-escape-test 2>/dev/null"
 
 # ── BLOCK: reads to credential paths (kernel-tier) ──
 expect_block "read ~/.ssh/id_rsa"               cat "$HOME/.ssh/id_rsa"
@@ -78,10 +78,10 @@ expect_block "python3 -m ensurepip"             python3 -m ensurepip
 expect_block "python3 -m venv"                  python3 -m venv /tmp/escape-venv
 
 # ── ALLOW: workspace operations ──
-expect_allow "write to ./test.tmp"              bash -c 'echo ok > ./sbx-test.tmp'
+expect_allow "write to ./test.tmp"              bash -c 'echo ok > ./agent-sbx-test.tmp'
 expect_allow "read ./README.md"                 test -f README.md
 # /tmp path: macOS resolves to /private/tmp, Linux uses /tmp directly
-expect_allow "write to /tmp"                    bash -c 'echo ok > /tmp/sbx-test.tmp'
+expect_allow "write to /tmp"                    bash -c 'echo ok > /tmp/agent-sbx-test.tmp'
 expect_allow "git status"                       git status
 
 # ── ALLOW: pure computation ──
@@ -94,7 +94,7 @@ fi
 expect_allow "jq filter"                        bash -c 'echo {} | jq .'
 
 # Cleanup
-rm -f ./sbx-test.tmp /tmp/sbx-test.tmp 2>/dev/null
+rm -f ./agent-sbx-test.tmp /tmp/agent-sbx-test.tmp 2>/dev/null
 
 echo
 echo "${DIM}── Results ──${RESET}"

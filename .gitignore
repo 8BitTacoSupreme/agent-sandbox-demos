@@ -1,4 +1,4 @@
-# sbx generates this directory at activation time
+# agent-sbx generates this directory at activation time
 .sandbox/
 
 # devbox locals
@@ -12,7 +12,7 @@ result
 result-*
 
 # Go build artifacts (compiled binary, not the source directory)
-sbx/sbx-landlock/sbx-landlock
+agent-sbx/agent-sbx-landlock/agent-sbx-landlock
 
 # OS
 .DS_Store

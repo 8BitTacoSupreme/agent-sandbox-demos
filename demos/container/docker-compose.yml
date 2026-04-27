@@ -7,7 +7,7 @@
 #   4. dropped capabilities (only SYS_ADMIN for bwrap namespaces)
 #   5. bwrap namespace isolation (inside the container)
 #   6. Landlock LSM (if kernel supports it)
-#   7. sbx shell-tier enforcement (PATH wipe, armor, requisites)
+#   7. agent-sbx shell-tier enforcement (PATH wipe, armor, requisites)
 
 services:
   agent:

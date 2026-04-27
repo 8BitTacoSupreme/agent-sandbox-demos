@@ -1,7 +1,7 @@
 # Kubernetes demo — deploy sandboxed agents on K8s
 
 Deploy a sandboxed AI agent workspace as a Kubernetes pod with defense-in-depth:
-Pod SecurityContext, NetworkPolicy, seccomp, bwrap, Landlock, and sbx shell enforcement.
+Pod SecurityContext, NetworkPolicy, seccomp, bwrap, Landlock, and agent-sbx shell enforcement.
 
 ## Prerequisites
 
@@ -15,8 +15,8 @@ Pod SecurityContext, NetworkPolicy, seccomp, bwrap, Landlock, and sbx shell enfo
 ```bash
 # Build and push the image first
 cd demos/container
-docker build -t your-registry/sbx-agent:latest -f Dockerfile ../..
-docker push your-registry/sbx-agent:latest
+docker build -t your-registry/agent-sbx:latest -f Dockerfile ../..
+docker push your-registry/agent-sbx:latest
 
 # Update the image reference in deployment.yaml, then:
 kubectl apply -k demos/kubernetes/
@@ -26,19 +26,19 @@ kubectl apply -k demos/kubernetes/
 
 The seccomp profile must be installed on each node at the path referenced
 in the Deployment's `seccompProfile.localhostProfile`. The default path is
-`profiles/sbx-seccomp.json` relative to the kubelet's seccomp root
+`profiles/agent-sbx-seccomp.json` relative to the kubelet's seccomp root
 (typically `/var/lib/kubelet/seccomp/`).
 
 ```bash
 # On each node (or via DaemonSet):
 sudo mkdir -p /var/lib/kubelet/seccomp/profiles
-sudo cp seccomp-profile.json /var/lib/kubelet/seccomp/profiles/sbx-seccomp.json
+sudo cp seccomp-profile.json /var/lib/kubelet/seccomp/profiles/agent-sbx-seccomp.json
 ```
 
 ## Verify
 
 ```bash
-kubectl exec -it deploy/sbx-agent -- bash tests/verify.sh
+kubectl exec -it deploy/agent-agent-sbx -- bash tests/verify.sh
 ```
 
 ## Platform compatibility
@@ -83,7 +83,7 @@ kubectl exec -it deploy/sbx-agent -- bash tests/verify.sh
 
 **Change the policy**: Edit `configmap.yaml` and re-apply.
 
-**Allow network egress**: Add `sbx-network: unrestricted` label to the pod
+**Allow network egress**: Add `agent-sbx-network: unrestricted` label to the pod
 and apply the second NetworkPolicy in `networkpolicy.yaml`.
 
 **Use a different image registry**: Update `deployment.yaml` image field.

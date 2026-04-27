@@ -22,23 +22,23 @@ sandflox elevate              # kernel-tier on top
 
 ## Zero-build alternative
 
-If you don't want to compile Go, the `sbx` tool in this repo provides the
+If you don't want to compile Go, the `agent-sbx` tool in this repo provides the
 same sandbox architecture as a single shell script:
 
 ```bash
 cd demos/plain-shell          # or any other demo directory
-../../sbx/sbx prepare
-../../sbx/sbx elevate
+../../sbx/agent-sbx prepare
+../../sbx/agent-sbx elevate
 ```
 
-## Why use sandflox over `sbx` if you're on Flox
+## Why use sandflox over `agent-sbx` if you're on Flox
 
 - Single Go binary, faster startup, fewer moving parts
 - Embedded default policy — works without any config files
 - Tested integration with Flox activation lifecycle
 - Maintained by Flox
 
-## Why use `sbx` over sandflox
+## Why use `agent-sbx` over sandflox
 
 - You're not on Flox
 - You want to read the implementation in shell

@@ -1,4 +1,4 @@
-# Mise demo: mise manages tool versions, sbx wraps them in a sandbox.
+# Mise demo: mise manages tool versions, agent-sbx wraps them in a sandbox.
 #
 # Note: mise uses shims by default. We disable them here so PATH points
 # directly at install dirs, which makes the sandbox allowlist meaningful
@@ -15,7 +15,7 @@ shims = false
 
 [hooks]
 # Fires when entering this directory via mise activate
-enter = "../../sbx/sbx prepare"
+enter = "../../sbx/agent-sbx prepare"
 
 [env]
 # Prepend our symlink farm so it wins resolution
@@ -23,11 +23,11 @@ _.path = ["./.sandbox/bin"]
 
 [tasks.elevate]
 description = "Re-exec shell under sandbox-exec"
-run = "exec ../../sbx/sbx elevate"
+run = "exec ../../sbx/agent-sbx elevate"
 
 [tasks.agent]
 description = "Run a shell inside the full sandbox"
-run = "../../sbx/sbx prepare && exec ../../sbx/sbx elevate"
+run = "../../sbx/agent-sbx prepare && exec ../../sbx/agent-sbx elevate"
 
 [tasks.verify]
 run = "../../tests/verify.sh"

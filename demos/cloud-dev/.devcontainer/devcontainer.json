@@ -1,5 +1,5 @@
 {
-  "name": "sbx-agent-workspace",
+  "name": "agent-sbx-workspace",
   "build": {
     "dockerfile": "Dockerfile",
     "context": "../../.."
@@ -9,8 +9,8 @@
     "--security-opt=seccomp=unconfined"
   ],
   "remoteUser": "agent",
-  "postCreateCommand": "sbx prepare",
-  "postAttachCommand": "echo '[sbx] Run: sbx elevate — to enter the sandbox'",
+  "postCreateCommand": "agent-sbx prepare",
+  "postAttachCommand": "echo '[agent-sbx] Run: agent-sbx elevate — to enter the sandbox'",
   "customizations": {
     "vscode": {
       "extensions": [

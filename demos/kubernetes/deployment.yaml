@@ -1,18 +1,18 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: sbx-agent
+  name: agent-sbx
   labels:
-    app: sbx-agent
+    app: agent-sbx
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: sbx-agent
+      app: agent-sbx
   template:
     metadata:
       labels:
-        app: sbx-agent
+        app: agent-sbx
     spec:
       securityContext:
         runAsNonRoot: true
@@ -21,10 +21,10 @@ spec:
         fsGroup: 1000
         seccompProfile:
           type: Localhost
-          localhostProfile: profiles/sbx-seccomp.json
+          localhostProfile: profiles/agent-sbx-seccomp.json
       containers:
         - name: agent
-          image: sbx-agent:latest
+          image: agent-sbx:latest
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -68,4 +68,4 @@ spec:
             sizeLimit: 1Gi
         - name: policy
           configMap:
-            name: sbx-policy
+            name: agent-sbx-policy

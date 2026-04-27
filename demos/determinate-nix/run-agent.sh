@@ -9,9 +9,9 @@ if [[ "$(uname)" != "Darwin" ]]; then
   exit 1
 fi
 
-# nix develop runs the shellHook (which calls sbx prepare), then we re-exec
+# nix develop runs the shellHook (which calls agent-sbx prepare), then we re-exec
 # the whole thing under sandbox-exec for kernel enforcement.
 exec nix develop --command bash -c '
-  ../../sbx/sbx prepare
-  exec ../../sbx/sbx elevate
+  ../../sbx/agent-sbx prepare
+  exec ../../sbx/agent-sbx elevate
 '

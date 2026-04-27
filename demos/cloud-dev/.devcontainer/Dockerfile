@@ -1,4 +1,4 @@
-# Devcontainer for Codespaces / Gitpod — extends the sbx container image
+# Devcontainer for Codespaces / Gitpod — extends the agent-sbx container image
 # with dev tooling for a comfortable editing experience.
 
 FROM cgr.dev/chainguard/wolfi-base:latest

@@ -2,7 +2,7 @@
 # =============================================================================
 # run-all.sh — test every demo whose env manager is installed
 # =============================================================================
-# Runs sbx prepare + elevate + verify.sh for each demo. Skips demos whose
+# Runs agent-sbx prepare + elevate + verify.sh for each demo. Skips demos whose
 # env manager isn't found on PATH. Reports per-demo pass/fail/skip.
 #
 # Usage:
@@ -14,7 +14,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-SBX="$REPO_DIR/sbx/sbx"
+SBX="$REPO_DIR/agent-sbx/agent-sbx"
 VERIFY="$SCRIPT_DIR/verify.sh"
 PLATFORM="$(uname)"
 
@@ -38,12 +38,12 @@ run_demo() {
 
   echo "${DIM}── Testing demos/$name ──${RESET}"
 
-  # Each demo needs sbx prepare to run inside the demo dir
+  # Each demo needs agent-sbx prepare to run inside the demo dir
   cd "$dir" || { FAILED+=("$name"); return; }
 
-  # Run sbx prepare
+  # Run agent-sbx prepare
   if ! "$SBX" prepare 2>&1; then
-    echo "${RED}FAIL${RESET}  demos/$name: sbx prepare failed"
+    echo "${RED}FAIL${RESET}  demos/$name: agent-sbx prepare failed"
     FAILED+=("$name")
     return
   fi

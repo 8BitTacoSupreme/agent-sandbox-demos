@@ -4,7 +4,7 @@ The classic "Nix without committing to Flox or devbox" stack:
 
 - `shell.nix` declares the environment in plain Nix
 - `direnv` activates it when you `cd` into the directory
-- `sbx` wraps the resulting binary set in a sandbox
+- `agent-sbx` wraps the resulting binary set in a sandbox
 
 Trust property is identical to the devbox demo — every binary lives at
 an input-addressed `/nix/store/<hash>/bin/<n>` path. The wiring is
@@ -25,7 +25,7 @@ just glued together with shell hooks instead of a JSON config.
 # First time: allow the .envrc
 direnv allow
 
-# cd in — direnv runs nix-shell, then sbx prepare, then prepends .sandbox/bin to PATH
+# cd in — direnv runs nix-shell, then agent-sbx prepare, then prepends .sandbox/bin to PATH
 cd .
 
 # Add kernel enforcement

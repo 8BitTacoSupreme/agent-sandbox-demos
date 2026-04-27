@@ -13,7 +13,7 @@ defense-in-depth.
 | 4 | **Dropped capabilities** | Only `SYS_ADMIN` retained (bwrap needs it); everything else dropped |
 | 5 | **bwrap namespaces** | PID, UTS, IPC isolation inside the container |
 | 6 | **Landlock LSM** | Kernel-level filesystem access control (kernel 5.13+) |
-| 7 | **sbx shell tier** | PATH wipe + symlink farm + function armor for 26 package managers |
+| 7 | **agent-sbx shell tier** | PATH wipe + symlink farm + function armor for 26 package managers |
 
 ## Prerequisites
 
@@ -27,14 +27,14 @@ defense-in-depth.
 docker compose up --build
 
 # Or manually:
-docker build -t sbx-agent -f Dockerfile ../..
+docker build -t agent-sbx -f Dockerfile ../..
 docker run --rm -it \
   --security-opt seccomp=seccomp-profile.json \
   --cap-add SYS_ADMIN \
   --cap-drop ALL \
   --read-only \
   --tmpfs /tmp:size=100M \
-  sbx-agent
+  agent-sbx
 ```
 
 ## Verify the sandbox
@@ -49,14 +49,14 @@ bash tests/verify.sh
 Podman runs rootless by default. The same image works:
 
 ```bash
-podman build -t sbx-agent -f Dockerfile ../..
+podman build -t agent-sbx -f Dockerfile ../..
 podman run --rm -it \
   --security-opt seccomp=seccomp-profile.json \
   --cap-add SYS_ADMIN \
   --cap-drop ALL \
   --read-only \
   --tmpfs /tmp:size=100M \
-  sbx-agent
+  agent-sbx
 ```
 
 Note: rootless Podman uses user namespaces automatically, adding another
@@ -70,4 +70,4 @@ depending on your Podman version.
 - **macOS Docker Desktop**: bwrap won't work inside the Linux VM's default
   kernel config. Shell-tier enforcement still active.
 - **Landlock network** (kernel 6.7+): If your kernel supports ABI v4,
-  `sbx-landlock` will also enforce TCP connect/bind restrictions.
+  `agent-sbx-landlock` will also enforce TCP connect/bind restrictions.
