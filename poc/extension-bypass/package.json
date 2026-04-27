@@ -1,0 +1,29 @@
+{
+  "name": "extension-bypass-poc",
+  "displayName": "Extension Bypass PoC",
+  "description": "Proves vscode.workspace.fs bypasses terminal sandboxing",
+  "version": "0.0.1",
+  "publisher": "agent-sandbox-demos",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "extensionBypass.writeFile",
+        "title": "Extension Bypass: Write File"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.0"
+  }
+}
